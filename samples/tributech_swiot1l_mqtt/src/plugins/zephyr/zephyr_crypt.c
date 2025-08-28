@@ -332,7 +332,7 @@ cleanup:
 
 static int saveKeys(void) {
   lfs_file_t file;
-  struct lfs_info info;
+  struct fs_dirent info;
   char buf[MAX_KEY_LEN];
   size_t len;
   int res;
@@ -342,7 +342,7 @@ static int saveKeys(void) {
   // Check if the file exists and has content
   // Only save new keys if the file is empty or does not exist
   // Or if device is expecting new certificate (newState_local == TT_SDK_STATE_NEXT_CERT)
-  if (lfs_stat(&lfs, filename, &info) == 0 && info.size > 0) {
+  if (fs_stat(filename, &info) == 0 && info.size > 0) {
     // File exists with content 
     if (newState_local == TT_SDK_STATE_RUNNING) {
       zephyrLog(NULL, TT_LL_INFO, "Device is operational.");
@@ -354,7 +354,7 @@ static int saveKeys(void) {
       // Open in truncate mode (clear content)
       zephyrLog(NULL, TT_LL_INFO, "File existed with content, opened in TRUNC mode.");
       zephyrLog(NULL, TT_LL_INFO, "Device is not operational because waiting for new certificate.");
-      res = lfs_file_open(&lfs, &file, filename, LFS_O_WRONLY | LFS_O_TRUNC);
+      res = fs_open(&file, filename, FS_O_WRITE | FS_O_TRUNC);
       if (res < 0) {
         zephyrLog(NULL, TT_LL_ERROR, "Failed to open cryptinit.bin file for writing.");
         return TT_E_NOT_FOUND;
@@ -364,39 +364,39 @@ static int saveKeys(void) {
 
   // File does not exist or is empty, create new
   zephyrLog(NULL, TT_LL_INFO, "File does not exist or is empty, create new cryptinit.bin file.");
-  res = lfs_file_open(&lfs, &file, filename, LFS_O_WRONLY | LFS_O_CREAT);
+  res = fs_open(&file, filename, FS_O_WRITE | FS_O_CREATE);
   if (res < 0)
     return TT_E_NOT_FOUND;
 
   if (mbedtls_pk_write_pubkey_pem(&keyProof.pkey, buf, sizeof(buf)) == 0) {
-    if (lfs_file_write(&lfs, &file, buf, strlen((char *)buf)) < 0) {
+    if (fs_file_write(&file, buf, strlen((char *)buf)) < 0) {
       zephyrLog(NULL, TT_LL_ERROR, "Failed to write public key to file cryptinit.bin.");
-      lfs_file_close(&lfs, &file);
+      fs_file_close(&file);
       return -1;
     }
   } else {
     zephyrLog(NULL, TT_LL_ERROR, "Failed to write public key to PEM format.");
-    lfs_file_close(&lfs, &file);
+    fs_file_close(&file);
     return -1;  
   }
 
   // Write private key
   len = 0;
   if (mbedtls_pk_write_key_pem(&keyProof.pkey, buf, sizeof(buf)) == 0) {
-    if (lfs_file_write(&lfs, &file, buf, strlen((char *)buf))< 0) {
+    if (fs_file_write(&file, buf, strlen((char *)buf)) < 0) {
       zephyrLog(NULL, TT_LL_ERROR, "Failed to write private key to file cryptinit.bin.");
-      lfs_file_close(&lfs, &file);
+      fs_file_close(&file);
       return -1;
     }
   } else {
     zephyrLog(NULL, TT_LL_ERROR, "Failed to write private key to PEM format.");
-    lfs_file_close(&lfs, &file);
+    fs_file_close(&file);
     return -1;
   }
 
   keyProof.used = 1; // Mark key as used
-  
-  lfs_file_close(&lfs, &file);
+
+  fs_file_close(&file);
   zephyrLog(NULL, TT_LL_INFO, "Keys saved to cryptinit.bin");
   return 0;
 }
