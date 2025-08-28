@@ -157,7 +157,7 @@ static int loadKeys(void) {
   }
 
   int16_t content_len = fs_file_read(&file, content, sizeof(content) - 1);
-  fs_file_close(&file);
+  fs_close(&file);
   if (content_len <= 0)
     return -1;
   content[content_len] = '\0';
@@ -331,7 +331,7 @@ cleanup:
 }
 
 static int saveKeys(void) {
-  lfs_file_t file;
+  struct fs_file_t file;
   struct fs_dirent info;
   char buf[MAX_KEY_LEN];
   size_t len;
