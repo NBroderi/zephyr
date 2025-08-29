@@ -4,7 +4,7 @@
 
 LOG_MODULE_REGISTER(ttsdk);
 
-static void zephyrLog(void*, TtLogLevel level, const char* msg);
+void zephyrLog(void*, TtLogLevel level, const char* msg);
 
 const TtLogging ttPluginLogging = {
     .context = NULL,
@@ -13,7 +13,7 @@ const TtLogging ttPluginLogging = {
     .log = &zephyrLog,
 };
 
-static void zephyrLog(void*, TtLogLevel level, const char* msg)
+void zephyrLog(void*, TtLogLevel level, const char* msg)
 {
     switch (level) {
     case TT_LL_ERROR:

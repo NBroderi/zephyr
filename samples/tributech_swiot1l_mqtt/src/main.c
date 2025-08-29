@@ -8,6 +8,7 @@
 #include <stdint.h>
 #include <tt_sdk/sdk.h>
 #include <zephyr/fs/fs.h>
+#include <zephyr/kernel.h>
 
 #define BUFFER_SIZE 8192
 
@@ -152,7 +153,7 @@ void sendTestDataLoop() {
             }
         }
 
-        sleep(1);
+        k_sleep(K_SECONDS(1));
     }
 }
 

@@ -53,6 +53,7 @@
 #define MAX_KEY_LEN 2048
 #define FILENAME_FMT_2 "%s/%s"
 
+extern void zephyrLog(void*, TtLogLevel level, const char* msg);
 extern TtState newState_local;
 static char filename[MAX_PATH_LEN] = "";
 static const char *pers = "tt_crypt_rng";
