@@ -44,6 +44,7 @@
 
 #include <tt_sdk/plugins/flashfs.h>
 #include <zephyr/fs/fs.h>
+#include <zephyr/random/random.h>
 
 #define BASE_DIR "/tt_flashfs"
 #define FILENAME_PREFIX "crypt."
@@ -67,29 +68,29 @@ static struct Key keyProof = {0};
 char key_buf_private[MAX_KEY_LEN];
 char key_buf_public[MAX_KEY_LEN];
 
-static TtError FreeRTOSGetRand(void *ctx, void *buf, size_t len);
-static TtError FreeRTOSHashSHA256(void *ctx, const void *data, size_t dataLen,
+static TtError ZephyrGetRand(void *ctx, void *buf, size_t len);
+static TtError ZephyrHashSHA256(void *ctx, const void *data, size_t dataLen,
                                   uint8_t *hash);
-static TtError FreeRTOSSupports(void *ctx, TtCryptAlgorithm algo);
-static TtError FreeRTOSKeyInfo(void *ctx, TtCryptKey key,
+static TtError ZephyrSupports(void *ctx, TtCryptAlgorithm algo);
+static TtError ZephyrKeyInfo(void *ctx, TtCryptKey key,
                                TtCryptAlgorithm *algo, char *pubKey,
                                size_t pubLen);
-static TtError FreeRTOSKeyCreate(void *ctx, TtCryptKey key,
+static TtError ZephyrKeyCreate(void *ctx, TtCryptKey key,
                                  TtCryptAlgorithm algo);
-static TtError FreeRTOSSign(void *ctx, TtCryptKey key, const void *data,
+static TtError ZephyrSign(void *ctx, TtCryptKey key, const void *data,
                             size_t dataLen, void *output, size_t *outLen);
-static TtError FreeRTOSCryptInit(void *ctx);
+static TtError ZephyrCryptInit(void *ctx);
 
 const TtCrypt ttPluginCrypt = {
     .context = NULL,
-    .name = "freertos",
-    .init = &FreeRTOSCryptInit,
-    .getRand = &FreeRTOSGetRand,
-    .hashSHA265 = &FreeRTOSHashSHA256,
-    .supports = &FreeRTOSSupports,
-    .keyInfo = &FreeRTOSKeyInfo,
-    .keyCreate = &FreeRTOSKeyCreate,
-    .sign = &FreeRTOSSign,
+    .name = "Zephyr",
+    .init = &ZephyrCryptInit,
+    .getRand = &ZephyrGetRand,
+    .hashSHA265 = &ZephyrHashSHA256,
+    .supports = &ZephyrSupports,
+    .keyInfo = &ZephyrKeyInfo,
+    .keyCreate = &ZephyrKeyCreate,
+    .sign = &ZephyrSign,
 };
 
 static struct Key *getKeyPtr(TtCryptKey key) {
@@ -157,7 +158,7 @@ static int loadKeys(void) {
     return -1;
   }
 
-  int16_t content_len = fs_file_read(&file, content, sizeof(content) - 1);
+  int16_t content_len = fs_read(&file, content, sizeof(content) - 1);
   fs_close(&file);
   if (content_len <= 0)
     return -1;
@@ -205,7 +206,7 @@ static int loadKeys(void) {
                  sizeof(key_buf_private)) == 0) 
   {
     if (mbedtls_pk_parse_key(&keyProof.pkey, (const unsigned char *)key_buf_private,
-                             strlen(key_buf_private) + 1, NULL, 0, FreeRTOSGetRand, 0) == 0) 
+                             strlen(key_buf_private) + 1, NULL, 0, ZephyrGetRand, 0) == 0) 
     {
       // log success
       zephyrLog(NULL, TT_LL_INFO, "Private key read successfully from cryptinit.bin");
@@ -370,34 +371,35 @@ static int saveKeys(void) {
     return TT_E_NOT_FOUND;
 
   if (mbedtls_pk_write_pubkey_pem(&keyProof.pkey, buf, sizeof(buf)) == 0) {
-    if (fs_file_write(&file, buf, strlen((char *)buf)) < 0) {
+    if (fs_write(&file, buf, strlen((char *)buf)) < 0) {
       zephyrLog(NULL, TT_LL_ERROR, "Failed to write public key to file cryptinit.bin.");
-      fs_file_close(&file);
+      fs_close(&file);
       return -1;
     }
-  } else {
+  } 
+  else {
     zephyrLog(NULL, TT_LL_ERROR, "Failed to write public key to PEM format.");
-    fs_file_close(&file);
+    fs_close(&file);
     return -1;  
   }
 
   // Write private key
   len = 0;
   if (mbedtls_pk_write_key_pem(&keyProof.pkey, buf, sizeof(buf)) == 0) {
-    if (fs_file_write(&file, buf, strlen((char *)buf)) < 0) {
+    if (fs_write(&file, buf, strlen((char *)buf)) < 0) {
       zephyrLog(NULL, TT_LL_ERROR, "Failed to write private key to file cryptinit.bin.");
-      fs_file_close(&file);
+      fs_close(&file);
       return -1;
     }
   } else {
     zephyrLog(NULL, TT_LL_ERROR, "Failed to write private key to PEM format.");
-    fs_file_close(&file);
+    fs_close(&file);
     return -1;
   }
 
   keyProof.used = 1; // Mark key as used
 
-  fs_file_close(&file);
+  fs_close(&file);
   zephyrLog(NULL, TT_LL_INFO, "Keys saved to cryptinit.bin");
   return 0;
 }
@@ -439,20 +441,20 @@ static TtCryptAlgorithm getAlgoFromKey(const mbedtls_pk_context *key) {
 
 static int fileLoaded = 0;
 
-static TtError FreeRTOSCryptInit(void *ctx) {
+static TtError ZephyrCryptInit(void *ctx) {
   // Initialize keys if previous key was not loaded
   TT_UNUSED(ctx);
 
   return TT_E_OK;
 }
 
-static TtError FreeRTOSHashSHA256(void *ctx, const void *data, size_t dataLen,
+static TtError ZephyrHashSHA256(void *ctx, const void *data, size_t dataLen,
                                   uint8_t *hash) {
   TT_UNUSED(ctx);
   return TT_E_NOT_SUPPORTED;
 }
 
-static TtError FreeRTOSSupports(void *ctx, TtCryptAlgorithm algo) {
+static TtError ZephyrSupports(void *ctx, TtCryptAlgorithm algo) {
   switch (algo) {
   case TT_CRYPT_ALGO_SHA256_RSA2048_PKCS1:
   case TT_CRYPT_ALGO_SHA256_ECDSAP256_IEEEP1363:
@@ -461,7 +463,7 @@ static TtError FreeRTOSSupports(void *ctx, TtCryptAlgorithm algo) {
   return TT_E_NOT_SUPPORTED;
 }
 
-static TtError FreeRTOSKeyInfo(void *ctx, TtCryptKey key,
+static TtError ZephyrKeyInfo(void *ctx, TtCryptKey key,
                                TtCryptAlgorithm *algo, char *pubKey,
                                size_t pubLen) {
   TT_UNUSED(ctx);
@@ -513,7 +515,7 @@ static TtError FreeRTOSKeyInfo(void *ctx, TtCryptKey key,
   return TT_E_OK;
 }
 
-static TtError FreeRTOSKeyCreate(void *ctx, TtCryptKey key,
+static TtError ZephyrKeyCreate(void *ctx, TtCryptKey key,
                                  TtCryptAlgorithm algo) {
   TT_UNUSED(ctx);
   struct Key *keyPtr = getKeyPtr(key);
@@ -531,7 +533,7 @@ static TtError FreeRTOSKeyCreate(void *ctx, TtCryptKey key,
                           mbedtls_pk_info_from_type(MBEDTLS_PK_RSA)) != 0) {
         return TT_E_FAULT;
       }
-      if (mbedtls_rsa_gen_key(mbedtls_pk_rsa(keyPtr->pkey), FreeRTOSGetRand, NULL,
+      if (mbedtls_rsa_gen_key(mbedtls_pk_rsa(keyPtr->pkey), ZephyrGetRand, NULL,
                               2048, 65537) != 0) {
         mbedtls_pk_free(&keyPtr->pkey);
         return TT_E_FAULT;
@@ -543,7 +545,7 @@ static TtError FreeRTOSKeyCreate(void *ctx, TtCryptKey key,
         return TT_E_FAULT;
       }
       if (mbedtls_ecdsa_genkey(mbedtls_pk_ec(keyPtr->pkey),
-                              MBEDTLS_ECP_DP_SECP256R1, FreeRTOSGetRand,
+                              MBEDTLS_ECP_DP_SECP256R1, ZephyrGetRand,
                               NULL) != 0) {
         mbedtls_pk_free(&keyPtr->pkey);
         return TT_E_FAULT;
@@ -562,6 +564,7 @@ static TtError FreeRTOSKeyCreate(void *ctx, TtCryptKey key,
 //------------------------------------------------------------------------------
 // Random number generator using the MAXQ1065 cryptoprocessor.
 //
+#ifdef CONFIG_MAXQ1065_ZEPHYR_GET_RAND
 static int maxq1065_get_random(unsigned char *buf, size_t len) {
   // This function gets random bytes from the MAXQ1065.
   int ret = MXC_TRNG_Init();
@@ -578,19 +581,26 @@ static int maxq1065_get_random(unsigned char *buf, size_t len) {
   MXC_TRNG_Shutdown();
   return TT_E_OK;
 }
+#endif
 
 //------------------------------------------------------------------------------
 // Fill 'buf' with 'len' random bytes from the MAXQ1065 cryptoprocessor.
-static TtError FreeRTOSGetRand(void *context, void *buf, size_t len) {
-  int ret;
+static TtError ZephyrGetRand(void *context, void *buf, size_t len) {
+  int ret = 0;
   (void)context; // Unused in this implementation.
+  
+#ifdef CONFIG_MAXQ1065_ZEPHYR_GET_RAND
   ret = maxq1065_get_random((unsigned char *)buf, len);
+#else
+  sys_rand_get((uint8_t *)buf, len);
+#endif
+
   if (ret != 0)
     return TT_E_FAULT;
   return TT_E_OK;
 }
 
-static TtError FreeRTOSSign(void *ctx, TtCryptKey key, const void *data,
+static TtError ZephyrSign(void *ctx, TtCryptKey key, const void *data,
                             size_t dataLen, void *output, size_t *outLen) {
   struct Key *keyPtr = getKeyPtr(key);
   if (!keyPtr)
@@ -607,14 +617,14 @@ static TtError FreeRTOSSign(void *ctx, TtCryptKey key, const void *data,
   if (algo == TT_CRYPT_ALGO_SHA256_RSA2048_PKCS1) {
     if (mbedtls_pk_sign(&keyPtr->pkey, MBEDTLS_MD_SHA256, data, dataLen,
                         (unsigned char *)output, sizeof(output), &sigLen,
-                        FreeRTOSGetRand, NULL) != 0) {
+                        ZephyrGetRand, NULL) != 0) {
       return TT_E_FAULT;
     }
   } else if (algo == TT_CRYPT_ALGO_SHA256_ECDSAP256_IEEEP1363) {
     unsigned char sig[MBEDTLS_ECDSA_MAX_LEN];
     size_t sig_len = sizeof(sig);
     if (mbedtls_pk_sign(&keyPtr->pkey, MBEDTLS_MD_SHA256, data, dataLen,
-                        sig, sizeof(sig), &sig_len,  FreeRTOSGetRand, NULL) != 0) {
+                        sig, sizeof(sig), &sig_len,  ZephyrGetRand, NULL) != 0) {
       return TT_E_FAULT;
     }
     // Convert ASN.1 DER signature to IEEE P1363 (r || s, each 32 bytes)
